@@ -26,6 +26,9 @@
 
   <link rel="stylesheet" href="styles.css">
 
+  <!-- MediaPipe Tasks Vision Library -->
+  <script src="/lib/mediapipe/vision_bundle.js"></script>
+
   <!-- Socket.IO Library -->
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -237,8 +240,9 @@
        SCREEN 4: MATCH COUNTDOWN OVERLAY
        ========================================== -->
   <div id="countdown-overlay" class="countdown-overlay flex-center hidden">
-    <div id="countdown-text" class="countdown-number">3</div>
-    <div class="countdown-sub">GET READY FOR TARGET ENGAGEMENT</div>
+    <div id="countdown-header" class="countdown-header">GAME STARTS IN</div>
+    <div id="countdown-text" class="countdown-number">5</div>
+    <div id="countdown-sub" class="countdown-sub">GET READY FOR TARGET ENGAGEMENT</div>
   </div>
 
   <!-- ==========================================
@@ -280,7 +284,7 @@
       <!-- Activation / Toggle Control Button -->
       <button id="btn-camera-aim-toggle" class="camera-aim-btn">
         <span class="aim-icon">📷</span>
-        <span id="camera-aim-toggle-label">CAMERA AIM: OFF</span>
+        <span id="camera-aim-toggle-label">FACE + FIST AIM: OFF</span>
       </button>
 
       <!-- Mirrored Webcam Preview Container (shown when active) -->
@@ -288,22 +292,30 @@
         <div class="camera-preview-wrapper">
           <video id="camera-aim-video" playsinline muted autoplay></video>
           <canvas id="camera-aim-canvas"></canvas>
-          <div id="camera-aim-pose-badge" class="camera-aim-pose-badge">HAND NOT DETECTED</div>
+          <div id="camera-aim-pose-badge" class="camera-aim-pose-badge">FACE: SEARCHING</div>
         </div>
 
-        <div id="camera-aim-diag" class="camera-aim-diag">GAME: -- FPS · HAND: -- FPS · 0ms</div>
+        <div id="camera-aim-status" class="camera-aim-status-line">FACE: -- · HAND: -- · SHOOT: OFF</div>
+        <div id="camera-aim-diag" class="camera-aim-diag">GAME FPS: -- · TRACK FPS: -- · FACE: NO · HAND: NO · INFERENCE: IDLE</div>
 
         <div class="camera-aim-controls-row">
           <button id="btn-camera-aim-calibrate" class="btn-calib-action">
-            <span id="camera-calib-label">CALIBRATE HAND</span>
+            <span id="camera-calib-label">CALIBRATE FACE</span>
           </button>
           <button id="btn-camera-aim-stop" class="btn-stop-action">
-            <span>STOP CAMERA AIM</span>
+            <span>STOP FACE + FIST AIM</span>
           </button>
         </div>
 
+        <div class="camera-aim-modes-row">
+          <button id="btn-aim-mode-all" class="btn-aim-mode active" title="Face aim + Fist shooting active">ALL ON</button>
+          <button id="btn-aim-mode-raw" class="btn-aim-mode" title="Zero AI: pure camera stream">RAW CAM</button>
+          <button id="btn-aim-mode-face" class="btn-aim-mode" title="Face aim only">FACE ONLY</button>
+          <button id="btn-aim-mode-hand" class="btn-aim-mode" title="Hand fist only">HAND ONLY</button>
+        </div>
+
         <!-- Feedback Alert Toast -->
-        <div id="camera-aim-alert" class="camera-aim-alert hidden">HAND CALIBRATED</div>
+        <div id="camera-aim-alert" class="camera-aim-alert hidden">FACE CALIBRATED</div>
       </div>
     </div>
 
@@ -405,11 +417,11 @@
               </button>
             </div>
 
-            <!-- Camera / Hand Aim Toggle Row -->
+            <!-- Face + Fist Aim Toggle Row -->
             <div class="mobile-setting-row">
-              <span class="mobile-setting-label">CAMERA AIM</span>
+              <span class="mobile-setting-label">FACE + FIST AIM</span>
               <button id="btn-mobile-camera-aim-toggle" class="mobile-btn btn-camera-aim-toggle">
-                <span id="mobile-camera-aim-toggle-label">CAMERA AIM: OFF</span>
+                <span id="mobile-camera-aim-toggle-label">FACE + FIST AIM: OFF</span>
               </button>
             </div>
 

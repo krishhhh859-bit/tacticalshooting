@@ -361,6 +361,9 @@ class App {
 
     net.on('countdown_started', (data) => {
       if (this.lobbyManager) this.lobbyManager.stop();
+      if (!this.currentGame || !this.currentGame.isActive) {
+        this.startActiveMatch();
+      }
       ui.showCountdown(data.seconds);
     });
 
@@ -370,11 +373,17 @@ class App {
 
     net.on('match_started', (data) => {
       console.log('[GAME] match_started event received from server.');
-      this.startActiveMatch();
+      if (!this.currentGame || !this.currentGame.isActive) {
+        this.startActiveMatch();
+      }
+      if (this.currentGame) {
+        this.currentGame.handleRoundStart(data);
+      }
     });
 
     net.on('match_ended', (summary) => {
       console.log('[GAME] match_ended event received. Showing results.');
+      ui.hideCountdown();
       if (this.currentGame) {
         this.currentGame.stop();
       }
@@ -395,6 +404,7 @@ class App {
     });
 
     net.on('player_disconnected', (data) => {
+      ui.hideCountdown();
       ui.showToast(data.message || 'Opponent disconnected.', 'warning');
       if (this.currentGame && this.currentGame.isActive) {
         this.currentGame.stop();
@@ -405,6 +415,9 @@ class App {
   }
 
   startActiveMatch() {
+    if (this.currentGame && this.currentGame.isActive) {
+      return;
+    }
     ui.showGameHUD();
 
     const canvasContainer = document.getElementById('game-canvas-container');
@@ -421,6 +434,7 @@ class App {
   }
 
   returnToLobby() {
+    ui.hideCountdown();
     if (this.currentGame) {
       this.currentGame.stop();
       this.currentGame = null;

@@ -22,9 +22,9 @@ async function runFullRangeMatchTest() {
       matchStartedAt = Date.now();
       assert.equal(data.duration, 240);
       assert.equal(data.targetRound.round, 1);
-      assert.equal(data.targetRound.targets.length, 6);
+      assert.equal(data.targetRound.targets.length, 8);
       rounds.add(data.targetRound.round);
-      console.log('[FULL MATCH TEST] Round 1 active immediately with six targets.');
+      console.log('[FULL MATCH TEST] Round 1 active immediately with eight targets.');
     });
 
     socket.on('range_targets_update', (state) => {

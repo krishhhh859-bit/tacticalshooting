@@ -58,6 +58,8 @@ export class GameMatch {
     this.reserveAmmo = GAME_CONFIG.WEAPON.TOTAL_RESERVE;
     this.scores = { 1: { score: 0 }, 2: { score: 0 } };
     this.timeFormatted = '04:00';
+    this.isRoundActive = false;
+    this.netHandlers = [];
 
     this.lastNetSendTime = 0;
   }
@@ -167,36 +169,47 @@ export class GameMatch {
     console.log('[GAME] Match initialization complete.');
   }
 
+  registerNet(event, fn) {
+    net.on(event, fn);
+    this.netHandlers.push({ event, fn });
+  }
+
+  handleRoundStart(data) {
+    console.log('[GAME] Match round officially started! Targets and firing enabled.');
+    this.isRoundActive = true;
+    this.isSoloPractice = !!net.isSolo;
+    if (data?.targetRound && this.targetManager) {
+      this.targetManager.setState(data.targetRound);
+      ui.updateTargetRound(data.targetRound);
+    }
+  }
+
   setupNetworkHandlers() {
-    net.on('timer_update', (data) => {
+    this.registerNet('timer_update', (data) => {
       this.timeFormatted = data.formattedTime;
       ui.updateHUD(this.timeFormatted, this.mySlot, this.scores, this.magazine, this.reserveAmmo);
     });
 
-    net.on('room_created', (data) => {
+    this.registerNet('room_created', (data) => {
       this.isSoloPractice = !!data?.isSolo;
     });
 
-    net.on('match_started', (data) => {
-      this.isSoloPractice = !!net.isSolo;
-      if (data?.targetRound && this.targetManager) {
-        this.targetManager.setState(data.targetRound);
-        ui.updateTargetRound(data.targetRound);
-      }
+    this.registerNet('match_started', (data) => {
+      this.handleRoundStart(data);
     });
 
-    net.on('range_targets_update', (data) => {
+    this.registerNet('range_targets_update', (data) => {
       if (!this.targetManager) return;
       this.targetManager.setState(data);
       ui.updateTargetRound(data);
     });
 
-    net.on('hit_confirmed', (data) => {
+    this.registerNet('hit_confirmed', (data) => {
       console.log(`[TARGET] Hit Confirmed by Server: +${data.points}`);
       ui.showHitmarker(data.isHeadshot);
     });
 
-    net.on('score_update', (data) => {
+    this.registerNet('score_update', (data) => {
       if (data.allScores) {
         this.scores = data.allScores;
         console.log(`[SCORE] Score updated:`, this.scores);
@@ -204,18 +217,18 @@ export class GameMatch {
       }
     });
 
-    net.on('range_target_hit', (data) => {
+    this.registerNet('range_target_hit', (data) => {
       if (this.targetManager) this.targetManager.markHit(data.targetId);
       if (data.slot === this.mySlot) ui.showHitmarker(false);
     });
 
-    net.on('ammo_update', (data) => {
+    this.registerNet('ammo_update', (data) => {
       this.magazine = data.magazine;
       this.reserveAmmo = data.reserveAmmo;
       ui.updateHUD(this.timeFormatted, this.mySlot, this.scores, this.magazine, this.reserveAmmo);
     });
 
-    net.on('reload_started', (data) => {
+    this.registerNet('reload_started', (data) => {
       const duration = (data && data.duration) ? data.duration : (soundEngine.getReloadDuration() * 1000 || GAME_CONFIG.WEAPON.RELOAD_TIME_MS);
       if (this.weapon) {
         this.weapon.reloadDuration = duration;
@@ -225,7 +238,7 @@ export class GameMatch {
       soundEngine.playReload();
     });
 
-    net.on('reload_completed', (data) => {
+    this.registerNet('reload_completed', (data) => {
       if (this.weapon) this.weapon.finishReload();
       ui.showReloading(false);
       soundEngine.stopReload();
@@ -234,15 +247,15 @@ export class GameMatch {
       ui.updateHUD(this.timeFormatted, this.mySlot, this.scores, this.magazine, this.reserveAmmo);
     });
 
-    net.on('weapon_dry_fire', () => {
+    this.registerNet('weapon_dry_fire', () => {
       soundEngine.playDryFire();
     });
 
-    net.on('player_fired_effect', (data) => {
+    this.registerNet('player_fired_effect', (data) => {
       soundEngine.playGunshot();
     });
 
-    net.on('opponent_move', (data) => {
+    this.registerNet('opponent_move', (data) => {
       if (this.opponentModel && data.position) {
         this.opponentTargetPos.set(data.position.x, 0, data.position.z);
         if (data.rotation) {
@@ -352,6 +365,7 @@ export class GameMatch {
 
   start() {
     this.isActive = true;
+    this.isRoundActive = false;
     this.clock.start();
     soundEngine.startForestAmbience();
     console.log('[GAME] Animation loop started.');
@@ -360,6 +374,7 @@ export class GameMatch {
 
   stop() {
     this.isActive = false;
+    this.isRoundActive = false;
     soundEngine.stopForestAmbience();
     soundEngine.stopReload();
     if (this.controls && this.controls.unlock) {
@@ -372,10 +387,14 @@ export class GameMatch {
       this.cameraAim.stop();
     }
     if (this.targetManager) this.targetManager.dispose();
+    if (this.netHandlers) {
+      this.netHandlers.forEach(({ event, fn }) => net.off(event, fn));
+      this.netHandlers = [];
+    }
   }
 
   handleShoot() {
-    if (!this.isActive || (this.weapon && this.weapon.isReloading)) return false;
+    if (!this.isActive || !this.isRoundActive || (this.weapon && this.weapon.isReloading)) return false;
 
     if (this.magazine <= 0) {
       soundEngine.playDryFire();
@@ -467,7 +486,7 @@ export class GameMatch {
   }
 
   handleReload() {
-    if (!this.isActive) return;
+    if (!this.isActive || !this.isRoundActive) return;
     if (this.magazine >= GAME_CONFIG.WEAPON.MAGAZINE_SIZE || this.reserveAmmo <= 0) return;
     if (this.weapon && this.weapon.isReloading) return;
     if (this.controls && this.controls.stopFiring) this.controls.stopFiring();

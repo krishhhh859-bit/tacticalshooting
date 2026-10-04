@@ -7,7 +7,7 @@ module.exports = {
   
   // Match settings
   MATCH_DURATION_SECONDS: 240, // Exactly 4 minutes
-  COUNTDOWN_SECONDS: 3,        // 3, 2, 1, GO
+  COUNTDOWN_SECONDS: 5,        // Exactly 5 seconds: 5, 4, 3, 2, 1, BEGIN!
   TICK_RATE_HZ: 30,             // 30 target & state updates per second
   
   // Weapon authoritative constraints

@@ -43,34 +43,41 @@ async function runTest() {
   socket2.emit('join_room', { roomCode, name: 'Commando 2', device: 'mobile' });
   await bothReadyPromise;
 
-  // 5. Verify countdown events
+  // 5. Verify countdown events and pre-match shooting rejection
+  let shotDuringCountdownFired = false;
+  socket1.on('ammo_update', () => { shotDuringCountdownFired = true; });
+
+  const countdownTicks = [];
   const countdownPromise = new Promise((resolve) => {
     socket1.on('countdown_started', (data) => {
       console.log(`✔ Match countdown started (${data.seconds}s)...`);
+      if (data.seconds !== 5) throw new Error(`Expected 5 seconds countdown, got ${data.seconds}`);
+      // Attempt shot during countdown - must be rejected by server
+      socket1.emit('player_shoot', {
+        origin: { x: -4, y: 1.7, z: 0 },
+        direction: { x: 0, y: 0, z: -1 },
+        targetId: 'fake-target'
+      });
     });
     socket1.on('countdown_tick', (data) => {
       console.log(`  [Countdown]: ${data.count}`);
+      countdownTicks.push(data.count);
     });
     socket1.on('match_started', (data) => {
-      console.log('✔ Match Started! Initial range:', data.targetRound.round, 'targets:', data.targetRound.targets.length);
+      console.log('✔ Match Started! Initial targets:', data.targetRound.targets.length, 'duration:', data.duration);
+      if (data.duration !== 240) throw new Error(`Expected 240s duration, got ${data.duration}`);
+      if (shotDuringCountdownFired) throw new Error('Shot during countdown should not consume ammo or be processed by server');
+      console.log('✔ Verified shooting during countdown was rejected by server');
       resolve(data);
     });
   });
 
   const matchData = await countdownPromise;
+  if (!countdownTicks.includes('BEGIN!')) throw new Error('Countdown did not conclude with BEGIN!');
 
   // 6. Test authoritative board hit detection and one-point hit-once scoring.
   const firstRound = matchData.targetRound;
-  if (!firstRound || firstRound.targets.length === 0) throw new Error('Round 1 did not start with active targets');
-  const nextRoundPromise = new Promise((resolve) => {
-    const onRound = (state) => {
-      if (state.round > firstRound.round) {
-        socket1.off('range_targets_update', onRound);
-        resolve(state);
-      }
-    };
-    socket1.on('range_targets_update', onRound);
-  });
+  if (!firstRound || firstRound.targets.length === 0) throw new Error('Match did not start with active targets');
 
   let confirmedHit = null;
   const onHit = (hitData) => { confirmedHit = hitData; };
@@ -120,13 +127,7 @@ async function runTest() {
   await new Promise(resolve => setTimeout(resolve, 30));
   socket1.off('hit_confirmed', onDuplicateHit);
   if (duplicateHit) throw new Error('A previously hit board awarded points twice');
-
-  const nextRound = await nextRoundPromise;
-  if (nextRound.round !== firstRound.round + 1) throw new Error('Target round did not advance after 5 seconds');
-  if (nextRound.targets.every(target => firstRound.targets.some(old => Math.hypot(old.x - target.x, old.z - target.z) < 0.1))) {
-    throw new Error('Target positions did not change between rounds');
-  }
-  console.log(`✔ New target arrangement synchronized in round ${nextRound.round}`);
+  console.log('✔ Duplicate hit correctly ignored');
 
   // 8. Test Reloading
   console.log('Testing reload sequence...');

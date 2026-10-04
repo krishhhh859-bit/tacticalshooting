@@ -19,7 +19,7 @@ async function testSolo() {
   const countdownPromise = new Promise(r => {
     socket.on('countdown_tick', (data) => {
       console.log('  [Countdown]:', data.count);
-      if (data.count === 'GO') r();
+      if (data.count === 'BEGIN!' || data.count === 'GO') r();
     });
   });
   await countdownPromise;

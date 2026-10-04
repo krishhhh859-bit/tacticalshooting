@@ -53,7 +53,7 @@ class MatchManager {
   startCountdown() {
     this.state = 'COUNTDOWN';
     this.countdownSeconds = config.COUNTDOWN_SECONDS;
-    console.log('[MATCH] Starting countdown for room ' + this.room.code + '...');
+    console.log('[MATCH] Starting ' + this.countdownSeconds + 's countdown for room ' + this.room.code + '...');
     this.io.to(this.room.code).emit('countdown_started', { seconds: this.countdownSeconds });
 
     this.countdownTimer = setInterval(() => {
@@ -62,10 +62,10 @@ class MatchManager {
         console.log('[MATCH] Countdown: ' + this.countdownSeconds);
         this.io.to(this.room.code).emit('countdown_tick', { count: this.countdownSeconds });
       } else if (this.countdownSeconds === 0) {
-        console.log('[MATCH] Countdown: GO!');
-        this.io.to(this.room.code).emit('countdown_tick', { count: 'GO' });
+        console.log('[MATCH] Countdown: BEGIN!');
+        this.io.to(this.room.code).emit('countdown_tick', { count: 'BEGIN!' });
         clearInterval(this.countdownTimer);
-        setTimeout(() => { this.startMatch(); }, 500);
+        setTimeout(() => { this.startMatch(); }, 800);
       }
     }, 1000);
   }

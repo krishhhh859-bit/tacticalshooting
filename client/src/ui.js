@@ -24,7 +24,10 @@ export class UIManager {
     };
 
     this.countdownOverlay = document.getElementById('countdown-overlay');
+    this.countdownHeader = document.getElementById('countdown-header');
     this.countdownText = document.getElementById('countdown-text');
+    this.countdownSub = document.getElementById('countdown-sub');
+    this.countdownHideTimeout = null;
     this.hitmarkerEl = document.getElementById('hitmarker');
     this.scopeOverlay = document.getElementById('scope-overlay');
     this.steadyAimOverlay = document.getElementById('steady-aim-indicator');
@@ -121,24 +124,50 @@ export class UIManager {
     if (!this.countdownOverlay || !this.countdownText) return;
 
     this.countdownOverlay.classList.remove('hidden');
+
+    const isBegin = (count === 'BEGIN!' || count === 'GO' || count === 0);
     this.countdownText.textContent = count;
+
+    if (this.countdownHeader) {
+      this.countdownHeader.textContent = isBegin ? 'MISSION COMMENCED' : 'GAME STARTS IN';
+    }
+    if (this.countdownSub) {
+      this.countdownSub.textContent = isBegin ? 'ENGAGE ALL TARGETS' : 'GET READY FOR TARGET ENGAGEMENT';
+    }
+
+    if (isBegin) {
+      this.countdownText.classList.add('is-begin');
+    } else {
+      this.countdownText.classList.remove('is-begin');
+    }
+
     this.countdownText.classList.remove('pulse-anim');
     void this.countdownText.offsetWidth; // Trigger reflow
     this.countdownText.classList.add('pulse-anim');
 
-    const isGo = (count === 'GO' || count === 0);
-    soundEngine.playCountdownBeep(isGo);
+    soundEngine.playCountdownBeep(isBegin);
 
-    if (isGo) {
-      setTimeout(() => {
-        this.countdownOverlay.classList.add('hidden');
-      }, 700);
+    if (isBegin) {
+      if (this.countdownHideTimeout) clearTimeout(this.countdownHideTimeout);
+      this.countdownHideTimeout = setTimeout(() => {
+        this.hideCountdown();
+      }, 800);
+    }
+  }
+
+  hideCountdown() {
+    if (this.countdownHideTimeout) {
+      clearTimeout(this.countdownHideTimeout);
+      this.countdownHideTimeout = null;
+    }
+    if (this.countdownOverlay) {
+      this.countdownOverlay.classList.add('hidden');
     }
   }
 
   showGameHUD() {
     this.showScreen('gameHud');
-    this.countdownOverlay.classList.add('hidden');
+    // Note: countdownOverlay visibility is controlled authoritatively by showCountdown/hideCountdown
   }
 
   updateHUD(timeFormatted, mySlot, allScores, ammo, reserveAmmo) {
