@@ -17,10 +17,11 @@ import { ui } from './ui.js';
 import { CameraAimController } from './cameraAim.js';
 
 export class GameMatch {
-  constructor(canvasContainer, deviceType = 'pc', mySlot = 1) {
+  constructor(canvasContainer, deviceType = 'pc', mySlot = 1, isTutorial = false) {
     this.container = canvasContainer;
     this.deviceType = deviceType;
     this.mySlot = mySlot;
+    this.isTutorial = isTutorial;
 
     this.scene = null;
     this.camera = null;
@@ -166,6 +167,18 @@ export class GameMatch {
 
     // 10. Window resize handler
     window.addEventListener('resize', () => this.handleResize());
+
+    // 11. Tutorial Mode Initialization
+    if (this.isTutorial) {
+      this.isRoundActive = true;
+      const hudTimer = document.getElementById('hud-timer');
+      if (hudTimer) hudTimer.textContent = 'TUTORIAL';
+      const roundStatus = document.getElementById('hud-round-status');
+      if (roundStatus) roundStatus.textContent = 'PRACTICE';
+      const soloActions = document.getElementById('hud-solo-actions');
+      if (soloActions) soloActions.classList.add('hidden');
+    }
+
     console.log('[GAME] Match initialization complete.');
   }
 
@@ -411,6 +424,16 @@ export class GameMatch {
     const direction = new THREE.Vector3();
     this.camera.getWorldDirection(direction);
 
+    // 4. Create visual bullet tracer line
+    this.spawnBulletTracer(this.camera.position, direction);
+
+    // If tutorial mode, handle purely locally without sending to server
+    if (this.isTutorial) {
+      this.magazine = Math.max(0, this.magazine - 1);
+      ui.updateHUD('TUTORIAL', this.mySlot, this.scores, this.magazine, this.reserveAmmo);
+      return true;
+    }
+
     const origin = {
       x: this.camera.position.x,
       y: this.camera.position.y,
@@ -423,8 +446,6 @@ export class GameMatch {
       z: direction.z
     };
 
-    // 4. Create visual bullet tracer line
-    this.spawnBulletTracer(this.camera.position, direction);
     const targetId = this.targetManager
       ? this.targetManager.findHitTarget(this.camera.position, direction, this.environment)
       : null;
@@ -487,9 +508,29 @@ export class GameMatch {
 
   handleReload() {
     if (!this.isActive || !this.isRoundActive) return;
-    if (this.magazine >= GAME_CONFIG.WEAPON.MAGAZINE_SIZE || this.reserveAmmo <= 0) return;
     if (this.weapon && this.weapon.isReloading) return;
     if (this.controls && this.controls.stopFiring) this.controls.stopFiring();
+
+    if (this.isTutorial) {
+      const duration = (soundEngine.getReloadDuration() * 1000) || GAME_CONFIG.WEAPON.RELOAD_TIME_MS;
+      if (this.weapon) {
+        this.weapon.reloadDuration = duration;
+        this.weapon.startReload();
+      }
+      ui.showReloading(true);
+      soundEngine.playReload();
+      setTimeout(() => {
+        if (!this.isActive) return;
+        if (this.weapon) this.weapon.finishReload();
+        ui.showReloading(false);
+        soundEngine.stopReload();
+        this.magazine = GAME_CONFIG.WEAPON.MAGAZINE_SIZE;
+        ui.updateHUD('TUTORIAL', this.mySlot, this.scores, this.magazine, this.reserveAmmo);
+      }, duration);
+      return;
+    }
+
+    if (this.magazine >= GAME_CONFIG.WEAPON.MAGAZINE_SIZE || this.reserveAmmo <= 0) return;
     net.sendReload();
   }
 

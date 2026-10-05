@@ -69,7 +69,7 @@ export class PCControls {
       '#camera-aim-widget, .camera-aim-btn, .camera-aim-preview-box, ' +
       '.mobile-top-bar, .mobile-controls-container, .mobile-settings-modal, ' +
       '.screen:not(#game-hud), #screen-room, #screen-lobby, #screen-device-select, #screen-results, ' +
-      '.toast-container, .hud-bottom-right, .ammo-panel'
+      '.toast-container, .hud-bottom-right, .ammo-panel, .btn-hud-home, .tutorial-overlay, .tutorial-panel, .btn-tutorial-util, #modal-home-confirm'
     );
   }
 

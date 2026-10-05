@@ -164,6 +164,11 @@
             <span class="btn-text">JOIN MULTIPLAYER MATCH</span>
           </button>
 
+          <button id="btn-view-previous-scores" class="btn btn-secondary btn-large">
+            <span class="btn-icon">🏆</span>
+            <span class="btn-text">VIEW PREVIOUS SCORES</span>
+          </button>
+
           <div class="lobby-actions-row">
             <button id="btn-how-to-play" class="btn btn-outline">HOW TO PLAY</button>
             <button id="btn-settings" class="btn btn-outline">SETTINGS</button>
@@ -252,6 +257,12 @@
     <!-- 3D Three.js Canvas Container -->
     <div id="game-canvas-container" class="canvas-container"></div>
 
+    <!-- Home / Return to Lobby Button (Desktop Top-Left) -->
+    <button id="btn-hud-home" class="btn-hud-home" title="Return to Tactical Lobby">
+      <span class="home-icon">⌂</span>
+      <span>HOME</span>
+    </button>
+
 
     <!-- HUD Overlay Top Bar -->
     <header class="hud-top-bar">
@@ -276,6 +287,13 @@
         <div id="hud-p2-score" class="score-value">0</div>
       </div>
     </header>
+
+    <!-- Solo Training Action (Finish Training & Save Authoritative Score) -->
+    <div id="hud-solo-actions" class="hud-solo-actions hidden">
+      <button id="btn-finish-solo" class="btn btn-sm btn-outline btn-tactical-hud">
+        <span class="btn-text">FINISH TRAINING</span>
+      </button>
+    </div>
 
     <div id="camera-mode-indicator" class="camera-mode-indicator">FIRST PERSON</div>
 
@@ -384,6 +402,11 @@
 
       <!-- Mobile Top Bar Controls (Top Left) -->
       <div class="mobile-top-bar">
+        <button id="btn-mobile-home" class="mobile-btn btn-top-action btn-home" title="Return to Lobby">
+          <span class="home-icon">⌂</span>
+          <span>HOME</span>
+        </button>
+
         <button id="btn-mobile-fullscreen" class="mobile-btn btn-top-action btn-fullscreen">
           <span id="mobile-fullscreen-label">ENTER FULLSCREEN</span>
         </button>
@@ -572,6 +595,12 @@
           <p>• New target arrangements rise every <strong>5 seconds</strong>; targets move during the final minute.</p>
           <p>• The shooter with the highest score when the authoritative clock reaches 00:00 wins!</p>
         </div>
+
+        <div class="tutorial-replay-box" style="margin-top: 1.25rem;">
+          <button id="btn-replay-tutorial" class="btn btn-secondary btn-full">
+            <span>🎓 REPLAY INTERACTIVE TUTORIAL</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -596,6 +625,100 @@
           <button id="btn-change-device" class="btn btn-secondary btn-full">SWITCH DEVICE PLATFORM</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Score History Modal -->
+  <div id="modal-score-history" class="modal-overlay flex-center hidden">
+    <div class="modal-card modal-large score-history-card">
+      <div class="modal-header">
+        <div class="score-history-header-titles">
+          <div class="tactical-badge">TACTICAL PERFORMANCE ARCHIVES</div>
+          <h3>PREVIOUS SCORES</h3>
+        </div>
+        <button class="modal-close-btn" id="btn-close-score-history" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body score-history-body">
+        <!-- Highest Score Display -->
+        <div class="highest-score-banner">
+          <div class="highest-score-label">HIGHEST SCORE</div>
+          <div class="highest-score-val" id="score-history-highest">0</div>
+        </div>
+
+        <!-- Recent Scores Section -->
+        <div class="recent-scores-section">
+          <div class="recent-scores-title">TODAY'S SCORES</div>
+          <div id="score-history-list" class="score-history-list">
+            <div class="score-history-loading">RETRIEVING TACTICAL ARCHIVES...</div>
+          </div>
+        </div>
+
+        <!-- Back Button -->
+        <div class="score-history-actions">
+          <button id="btn-score-history-back" class="btn btn-primary btn-full">
+            <span>BACK TO LOBBY</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leave Session Confirmation Modal -->
+  <div id="modal-home-confirm" class="modal-overlay flex-center hidden">
+    <div class="modal-card home-confirm-card">
+      <div class="modal-header">
+        <div class="tactical-badge">OPERATIONAL COMMAND</div>
+        <h3 id="home-confirm-title">LEAVE TRAINING?</h3>
+      </div>
+      <div class="modal-body">
+        <p id="home-confirm-desc" class="home-confirm-desc">Your current session will be ended.</p>
+        <div class="home-confirm-actions">
+          <button id="btn-home-cancel" class="btn btn-secondary">CANCEL</button>
+          <button id="btn-home-leave" class="btn btn-danger">LEAVE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Tutorial Overlay Layer -->
+  <div id="tutorial-overlay" class="tutorial-overlay hidden">
+    <div id="tutorial-panel" class="tutorial-panel" data-pos="top">
+      <div class="tutorial-panel-header">
+        <div class="tutorial-badge-row">
+          <span class="tutorial-badge-tactical">TACTICAL CADET TUTORIAL</span>
+          <span id="tutorial-step-tag" class="tutorial-step-tag">STEP 1 OF 6</span>
+        </div>
+        <div class="tutorial-actions-top">
+          <button id="btn-tutorial-repeat" class="btn-tutorial-util" title="Replay voice explanation">
+            <span class="icon">🔊</span>
+            <span>REPEAT</span>
+          </button>
+          <button id="btn-tutorial-skip" class="btn-tutorial-util btn-tutorial-skip-btn" title="Skip tutorial and enter lobby">
+            <span>SKIP TUTORIAL</span>
+          </button>
+        </div>
+      </div>
+      <div class="tutorial-panel-body">
+        <div class="tutorial-title-row">
+          <h2 id="tutorial-title" class="tutorial-title">LOOK & AIM</h2>
+          <span id="tutorial-status-badge" class="tutorial-badge badge-progress">IN PROGRESS</span>
+        </div>
+        <p id="tutorial-explanation" class="tutorial-explanation">Move your mouse to look around and aim.</p>
+        <div id="tutorial-prompt-box" class="tutorial-prompt-box">
+          <span class="pulse-indicator"></span>
+          <span id="tutorial-action-text" class="tutorial-action-text">TRY IT — MOVE YOUR MOUSE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Final Tutorial Complete Screen Card -->
+    <div id="tutorial-complete-box" class="tutorial-complete-box hidden">
+      <div class="tactical-badge">TRAINING PROTOCOL PASSED</div>
+      <h1 class="tutorial-complete-title">✓ TUTORIAL COMPLETE</h1>
+      <p class="tutorial-complete-desc">You're ready to play. Enter the tactical command lobby to begin.</p>
+      <button id="btn-tutorial-lobby" class="btn btn-primary btn-large">
+        <span>GO TO LOBBY</span>
+      </button>
     </div>
   </div>
 

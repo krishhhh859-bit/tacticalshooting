@@ -1047,6 +1047,11 @@ export class MobileControls {
     }
   }
 
+  get isScoped() {
+    return !!this._scoping;
+  }
+
+
 
   /* ==========================================================
      RELOAD ACTION
@@ -1133,6 +1138,10 @@ export class MobileControls {
     if (layer) {
       layer.style.display = 'none';
     }
+  }
+
+  dispose() {
+    this.hide();
   }
 }
 

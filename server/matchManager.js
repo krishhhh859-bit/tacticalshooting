@@ -4,6 +4,7 @@
  */
 
 const config = require('./config');
+const scoreStore = require('./scoreStore');
 
 class MatchManager {
   constructor(room, io) {
@@ -22,6 +23,7 @@ class MatchManager {
     this.targetCycleStartTime = null;
     this.targetCyclePhase = 'ACTIVE'; // 'ACTIVE' | 'COOLDOWN'
 
+    this.scoreSaved = false;
     this.playerStats = {};
     for (const socketId of Object.keys(room.players)) {
       this.initPlayerStats(socketId);
@@ -35,6 +37,7 @@ class MatchManager {
     const player = this.room.players[socketId];
     this.playerStats[socketId] = {
       socketId,
+      playerId: player?.playerId || socketId,
       slot: player.slot,
       name: player.name || ('Player ' + player.slot),
       score: 0,
@@ -72,6 +75,7 @@ class MatchManager {
 
   startMatch() {
     this.state = 'PLAYING';
+    this.scoreSaved = false;
     this.timeRemaining = config.MATCH_DURATION_SECONDS;
     this.startTime = Date.now();
     this.endTime = this.startTime + (this.timeRemaining * 1000);
@@ -651,13 +655,16 @@ class MatchManager {
     this.state = 'ENDED';
     this.timeRemaining = 0;
     this.io.to(this.room.code).emit('timer_update', { timeRemaining: 0, formattedTime: '00:00' });
-    console.log('[MATCH] Match ENDED at 00:00 in room ' + this.room.code + '!');
+    console.log('[MATCH] Match ENDED in room ' + this.room.code + '!');
     clearInterval(this.matchTimer);
     clearInterval(this.tickInterval);
     clearInterval(this.countdownTimer);
     for (const stats of Object.values(this.playerStats)) {
       if (stats.reloadTimeout) clearTimeout(stats.reloadTimeout);
     }
+
+    this.saveMatchScores();
+
     const playerList = Object.values(this.playerStats);
     const p1 = playerList.find(p => p.slot === 1) || { name: 'Player 1', score: 0, hits: 0, totalShots: 0 };
     const p2 = playerList.find(p => p.slot === 2) || { name: 'Player 2', score: 0, hits: 0, totalShots: 0 };
@@ -665,12 +672,28 @@ class MatchManager {
     if (p1.score > p2.score) { result = 'WINNER'; winnerSlot = 1; winnerName = p1.name; }
     else if (p2.score > p1.score) { result = 'WINNER'; winnerSlot = 2; winnerName = p2.name; }
     this.io.to(this.room.code).emit('match_ended', {
-      result, winnerSlot, winnerName,
+      result, winnerSlot, winnerName, isSolo: !!this.room.isSolo,
       player1: { name: p1.name, slot: 1, score: p1.score, hits: p1.hits, totalShots: p1.totalShots,
         accuracy: p1.totalShots > 0 ? Math.round((p1.hits / p1.totalShots) * 100) : 0 },
       player2: { name: p2.name, slot: 2, score: p2.score, hits: p2.hits, totalShots: p2.totalShots,
         accuracy: p2.totalShots > 0 ? Math.round((p2.hits / p2.totalShots) * 100) : 0 }
     });
+  }
+
+  saveMatchScores() {
+    if (this.scoreSaved) return;
+    this.scoreSaved = true;
+
+    const mode = this.room.isSolo ? 'solo' : 'multiplayer';
+    const matchId = `${this.room.code}_${this.startTime || Date.now()}`;
+    const playerList = Object.values(this.playerStats);
+
+    for (const stats of playerList) {
+      if (stats.playerId && typeof stats.score === 'number') {
+        scoreStore.addScore(stats.playerId, stats.score, matchId, mode);
+        console.log(`[MATCH] Authoritative score saved for ${stats.name} (${stats.playerId}): ${stats.score} [${mode}]`);
+      }
+    }
   }
 
   formatTime(seconds) {

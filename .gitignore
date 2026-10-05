@@ -27,3 +27,7 @@ logs/
 # Scratch / Temporary test files
 scratch/
 
+# Server persistent score data
+server/data/
+
+

@@ -13,6 +13,8 @@ import { AssetLoader } from './loading.js';
 import { LobbyManager } from './lobby.js';
 import { GameMatch } from './game.js';
 import { enterFullscreen, lockLandscape } from './mobileControls.js';
+import { TutorialManager } from './tutorial.js';
+import { checkUICollisions } from './collisionChecker.js';
 
 class App {
   constructor() {
@@ -24,6 +26,8 @@ class App {
     this.mySlot = 1;
     this.isHost = false;
     this.assetsReady = false;
+    this.tutorialManager = new TutorialManager(this);
+    this.isInTutorial = false;
 
     console.log('[GAME] PARA SF App initializing...');
     this.init();
@@ -83,8 +87,8 @@ class App {
         document.body.classList.add('phone-mode');
         window.dispatchEvent(new Event('resize'));
 
-        // Continue to the normal existing lobby page
-        this.proceedToLobby();
+        // Continue to the mobile tutorial flow
+        this.startTutorial('mobile');
       };
 
       btnEnterFsPrompt.addEventListener('click', handleEnterFsPrompt);
@@ -127,6 +131,85 @@ class App {
     if (btnSettings) {
       btnSettings.addEventListener('click', () => {
         ui.openModal('settings');
+      });
+    }
+
+    // View Previous Scores Button & Back Action
+    const btnViewPreviousScores = document.getElementById('btn-view-previous-scores');
+    if (btnViewPreviousScores) {
+      btnViewPreviousScores.addEventListener('click', () => {
+        ui.showScoreHistoryLoading();
+        ui.openModal('scoreHistory');
+        net.getScoreHistory();
+      });
+    }
+
+    const btnScoreHistoryBack = document.getElementById('btn-score-history-back');
+    if (btnScoreHistoryBack) {
+      btnScoreHistoryBack.addEventListener('click', () => {
+        ui.closeModal('scoreHistory');
+      });
+    }
+
+    const btnCloseScoreHistory = document.getElementById('btn-close-score-history');
+    if (btnCloseScoreHistory) {
+      btnCloseScoreHistory.addEventListener('click', () => {
+        ui.closeModal('scoreHistory');
+      });
+    }
+
+    // Solo Practice Finish Training Button
+    const btnFinishSolo = document.getElementById('btn-finish-solo');
+    if (btnFinishSolo) {
+      btnFinishSolo.addEventListener('click', () => {
+        console.log('[GAME] Player requested Finish Training');
+        if (document.exitPointerLock && document.pointerLockElement) {
+          document.exitPointerLock();
+        }
+        net.finishSoloTraining();
+      });
+    }
+
+    // Home Buttons in Gameplay HUD & Mobile Top Bar
+    const btnHudHome = document.getElementById('btn-hud-home');
+    if (btnHudHome) {
+      btnHudHome.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleHomeClick();
+      });
+    }
+
+    const btnMobileHome = document.getElementById('btn-mobile-home');
+    if (btnMobileHome) {
+      btnMobileHome.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleHomeClick();
+      });
+    }
+
+    // Home Confirmation Modal Actions
+    const btnHomeCancel = document.getElementById('btn-home-cancel');
+    if (btnHomeCancel) {
+      btnHomeCancel.addEventListener('click', () => {
+        this.cancelHome();
+      });
+    }
+
+    const btnHomeLeave = document.getElementById('btn-home-leave');
+    if (btnHomeLeave) {
+      btnHomeLeave.addEventListener('click', () => {
+        this.confirmLeaveSession();
+      });
+    }
+
+    // Replay Interactive Tutorial from How to Play Modal
+    const btnReplayTutorial = document.getElementById('btn-replay-tutorial');
+    if (btnReplayTutorial) {
+      btnReplayTutorial.addEventListener('click', () => {
+        ui.closeModal('howToPlay');
+        this.startTutorial(this.selectedDevice || 'pc');
       });
     }
 
@@ -258,7 +341,7 @@ class App {
       ui.showMobileFullscreen();
     } else {
       document.body.classList.remove('phone-mode');
-      this.proceedToLobby();
+      this.startTutorial('pc');
     }
   }
 
@@ -270,7 +353,7 @@ class App {
     }
   }
 
-  startLoadingScreen() {
+  startLoadingScreen(onDone = null) {
     ui.showLoading(0, 'INITIALIZING MISSION');
     soundEngine.init();
 
@@ -279,7 +362,13 @@ class App {
         ui.updateLoadingProgress(progress, statusText);
       },
       () => {
-        this.onAssetsLoaded();
+        this.assetsReady = true;
+        console.log('[GAME] Assets ready.');
+        if (typeof onDone === 'function') {
+          onDone();
+        } else {
+          this.onAssetsLoaded();
+        }
       }
     );
 
@@ -412,6 +501,10 @@ class App {
         setTimeout(() => this.returnToLobby(), 2500);
       }
     });
+
+    net.on('score_history_data', (data) => {
+      ui.renderScoreHistory(data);
+    });
   }
 
   startActiveMatch() {
@@ -425,12 +518,133 @@ class App {
     this.currentGame.init();
     this.currentGame.start();
 
+    const soloActions = document.getElementById('hud-solo-actions');
+    if (soloActions) {
+      if (net.isSolo) {
+        soloActions.classList.remove('hidden');
+      } else {
+        soloActions.classList.add('hidden');
+      }
+    }
+
     // PC: immediately request pointer lock so mouse aim works without any
     // extra click gate. The browser allows this since it follows a user gesture
     // (the lobby button click that triggered startActiveMatch).
     if (this.selectedDevice === 'pc' && this.currentGame.controls && this.currentGame.controls.requestLock) {
       this.currentGame.controls.requestLock();
     }
+
+    setTimeout(() => {
+      checkUICollisions();
+    }, 250);
+  }
+
+  startTutorial(device = 'pc') {
+    this.isInTutorial = true;
+    if (!this.assetsReady) {
+      this.startLoadingScreen(() => {
+        this._launchTutorialMatch(device);
+      });
+      return;
+    }
+    this._launchTutorialMatch(device);
+  }
+
+  _launchTutorialMatch(device) {
+    if (this.lobbyManager) {
+      this.lobbyManager.stop();
+    }
+    if (this.currentGame) {
+      this.currentGame.stop();
+      this.currentGame = null;
+    }
+
+    ui.showGameHUD();
+
+    const canvasContainer = document.getElementById('game-canvas-container');
+    this.currentGame = new GameMatch(canvasContainer, device, 1, true);
+    this.currentGame.init();
+    this.currentGame.start();
+
+    const soloActions = document.getElementById('hud-solo-actions');
+    if (soloActions) soloActions.classList.add('hidden');
+
+    if (device === 'pc' && this.currentGame.controls && this.currentGame.controls.requestLock) {
+      this.currentGame.controls.requestLock();
+    }
+
+    this.tutorialManager.start(device);
+
+    setTimeout(() => {
+      checkUICollisions();
+    }, 300);
+  }
+
+  onTutorialFinished() {
+    this.isInTutorial = false;
+    if (this.tutorialManager) {
+      this.tutorialManager.cleanup();
+    }
+    if (this.currentGame) {
+      this.currentGame.stop();
+      this.currentGame = null;
+    }
+    if (document.exitPointerLock && document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (_) {}
+    }
+    const canvasContainer = document.getElementById('game-canvas-container');
+    if (canvasContainer) canvasContainer.innerHTML = '';
+
+    this.openLobby();
+  }
+
+  handleHomeClick() {
+    if (this.isInTutorial) {
+      this.onTutorialFinished();
+      return;
+    }
+
+    const modalConfirm = document.getElementById('modal-home-confirm');
+    const confirmTitle = document.getElementById('home-confirm-title');
+    const confirmDesc = document.getElementById('home-confirm-desc');
+
+    if (net.isSolo) {
+      if (confirmTitle) confirmTitle.textContent = 'LEAVE TRAINING?';
+      if (confirmDesc) confirmDesc.textContent = 'Your current session will be ended.';
+    } else {
+      if (confirmTitle) confirmTitle.textContent = 'LEAVE MATCH?';
+      if (confirmDesc) confirmDesc.textContent = 'Leaving will end your participation in this match.';
+    }
+
+    if (modalConfirm) {
+      modalConfirm.classList.remove('hidden');
+    }
+    if (document.exitPointerLock && document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (_) {}
+    }
+  }
+
+  cancelHome() {
+    const modalConfirm = document.getElementById('modal-home-confirm');
+    if (modalConfirm) {
+      modalConfirm.classList.add('hidden');
+    }
+    if (this.selectedDevice === 'pc' && this.currentGame && this.currentGame.controls && this.currentGame.controls.requestLock) {
+      this.currentGame.controls.requestLock();
+    }
+  }
+
+  confirmLeaveSession() {
+    const modalConfirm = document.getElementById('modal-home-confirm');
+    if (modalConfirm) {
+      modalConfirm.classList.add('hidden');
+    }
+
+    // Tell server we left room (this cleans up match on server without saving abandoned score)
+    net.leaveRoom();
+
+    // Return to lobby
+    this.returnToLobby();
   }
 
   returnToLobby() {
@@ -438,6 +652,9 @@ class App {
     if (this.currentGame) {
       this.currentGame.stop();
       this.currentGame = null;
+    }
+    if (document.exitPointerLock && document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (_) {}
     }
     const canvasContainer = document.getElementById('game-canvas-container');
     if (canvasContainer) canvasContainer.innerHTML = '';
@@ -448,10 +665,17 @@ class App {
       btnPlayAgain.textContent = 'PLAY AGAIN';
     }
 
+    const soloActions = document.getElementById('hud-solo-actions');
+    if (soloActions) soloActions.classList.add('hidden');
+
     ui.showLobby();
     if (this.lobbyManager) {
       this.lobbyManager.start();
     }
+
+    setTimeout(() => {
+      checkUICollisions();
+    }, 200);
   }
 
   updateHowToPlayContent() {

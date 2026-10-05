@@ -10,6 +10,7 @@ const path = require('path');
 const os = require('os');
 const config = require('./config');
 const RoomManager = require('./roomManager');
+const scoreStore = require('./scoreStore');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,20 +46,66 @@ app.get('/api/health', (req, res) => {
 
 // Socket.IO Communication Gateway
 io.on('connection', (socket) => {
-  console.log(`[NET] Player connected: ${socket.id}`);
+  // Helper to reliably resolve and bind persistent player ID
+  const resolvePlayerId = (data) => {
+    if (data && typeof data.playerId === 'string' && data.playerId.trim()) {
+      socket.playerId = data.playerId.trim().slice(0, 64);
+    } else if (!socket.playerId) {
+      const authPid = (socket.handshake.auth && socket.handshake.auth.playerId) ||
+                      (socket.handshake.query && socket.handshake.query.playerId);
+      if (authPid && typeof authPid === 'string' && authPid.trim()) {
+        socket.playerId = authPid.trim().slice(0, 64);
+      }
+    }
+    return socket.playerId || socket.id;
+  };
+
+  // Extract initial identity if present in handshake
+  const initialAuthId = (socket.handshake.auth && socket.handshake.auth.playerId) ||
+                        (socket.handshake.query && socket.handshake.query.playerId);
+  if (initialAuthId && typeof initialAuthId === 'string' && initialAuthId.trim()) {
+    socket.playerId = initialAuthId.trim().slice(0, 64);
+  } else {
+    socket.playerId = null;
+  }
+
+  console.log(`[NET] Player connected: ${socket.id} (Initial PlayerID: ${socket.playerId || 'pending'})`);
+
+  // Request player's personal score history (Authoritative, player-specific)
+  socket.on('get_score_history', (data, callback) => {
+    const targetPlayerId = resolvePlayerId(data);
+    console.log(`[NET] Fetching score history for PlayerID: ${targetPlayerId}`);
+    const history = scoreStore.getPlayerHistory(targetPlayerId);
+    socket.emit('score_history_data', history);
+    if (typeof callback === 'function') {
+      callback(history);
+    }
+  });
 
   // Create new 2-player tactical room
   socket.on('create_room', (data) => {
+    resolvePlayerId(data);
     roomManager.createRoom(socket, data);
   });
 
   // Start Solo Practice Range Match
   socket.on('create_solo_practice', (data) => {
+    resolvePlayerId(data);
     roomManager.createSoloPractice(socket, data);
+  });
+
+  // Early finish or completion of Solo Training Mode
+  socket.on('finish_solo_training', () => {
+    const room = roomManager.getRoomBySocket(socket.id);
+    if (room && room.isSolo && room.match) {
+      console.log(`[SOLO] Player finished training session in room: ${room.code}`);
+      room.match.endMatch();
+    }
   });
 
   // Join existing tactical room
   socket.on('join_room', (data) => {
+    resolvePlayerId(data);
     roomManager.joinRoom(socket, data.roomCode, data);
   });
 

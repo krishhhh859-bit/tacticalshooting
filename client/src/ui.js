@@ -20,7 +20,8 @@ export class UIManager {
     this.modals = {
       howToPlay: document.getElementById('modal-how-to-play'),
       settings: document.getElementById('modal-settings'),
-      joinDialog: document.getElementById('modal-join')
+      joinDialog: document.getElementById('modal-join'),
+      scoreHistory: document.getElementById('modal-score-history')
     };
 
     this.countdownOverlay = document.getElementById('countdown-overlay');
@@ -253,7 +254,10 @@ export class UIManager {
     const bannerEl = document.getElementById('results-banner');
     const winnerNameEl = document.getElementById('results-winner-text');
 
-    if (summary.result === 'DRAW') {
+    if (summary.isSolo) {
+      if (bannerEl) bannerEl.textContent = 'SOLO PRACTICE COMPLETE';
+      if (winnerNameEl) winnerNameEl.textContent = `TARGETS ENGAGED · SCORE: ${summary.player1.score}`;
+    } else if (summary.result === 'DRAW') {
       if (bannerEl) bannerEl.textContent = 'MATCH DRAW';
       if (winnerNameEl) winnerNameEl.textContent = 'EVEN ACCURACY BETWEEN PLAYERS';
     } else {
@@ -302,6 +306,81 @@ export class UIManager {
     if (this.modals[modalName]) {
       this.modals[modalName].classList.add('hidden');
     }
+  }
+
+  showScoreHistoryLoading() {
+    const highestEl = document.getElementById('score-history-highest');
+    const listEl = document.getElementById('score-history-list');
+    if (highestEl) highestEl.textContent = '--';
+    if (listEl) {
+      listEl.innerHTML = '<div class="score-history-loading"><span class="pulse-dot"></span> RETRIEVING TACTICAL ARCHIVES...</div>';
+    }
+  }
+
+  renderScoreHistory(data = {}) {
+    const highestEl = document.getElementById('score-history-highest');
+    const listEl = document.getElementById('score-history-list');
+
+    const highestScore = (typeof data.highestScore === 'number') ? data.highestScore : 0;
+    if (highestEl) {
+      highestEl.textContent = String(highestScore);
+    }
+
+    if (!listEl) return;
+
+    const scores = Array.isArray(data.scores) ? data.scores : [];
+    if (scores.length === 0) {
+      listEl.innerHTML = `
+        <div class="score-history-empty">
+          <div class="empty-icon">🎖️</div>
+          <div class="empty-text">NO PREVIOUS SCORES RECORDED IN THE LAST 24 HOURS</div>
+          <div class="empty-subtext">Complete a Solo Training or Multiplayer match to log scores.</div>
+        </div>
+      `;
+      return;
+    }
+
+    listEl.innerHTML = scores.map(item => {
+      const formattedTime = this.formatScoreTime(item.timestamp);
+      const isSolo = item.mode === 'solo' || item.mode === 'Solo Training';
+      const modeLabel = isSolo ? 'Solo Training' : 'Multiplayer';
+      const modeClass = isSolo ? 'badge-solo' : 'badge-multiplayer';
+      return `
+        <div class="score-history-row">
+          <div class="score-history-score">${item.score}</div>
+          <div class="score-history-mode ${modeClass}">${modeLabel}</div>
+          <div class="score-history-time">${formattedTime}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  formatScoreTime(timestamp) {
+    if (!timestamp) return '--';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    const isToday = date.getDate() === now.getDate() &&
+                    date.getMonth() === now.getMonth() &&
+                    date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return timeStr;
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.getDate() === yesterday.getDate() &&
+                        date.getMonth() === yesterday.getMonth() &&
+                        date.getFullYear() === yesterday.getFullYear();
+
+    if (isYesterday) {
+      return `Yesterday, ${timeStr}`;
+    }
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${monthNames[date.getMonth()]} ${date.getDate()}, ${timeStr}`;
   }
 }
 

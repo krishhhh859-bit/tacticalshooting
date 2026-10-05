@@ -31,8 +31,11 @@ class RoomManager {
     this.leaveCurrentRoom(socket);
 
     const roomCode = this.generateRoomCode();
+    const resolvedPlayerId = (playerData && playerData.playerId && String(playerData.playerId).trim()) || socket.playerId || socket.id;
+    socket.playerId = resolvedPlayerId;
     const player = {
       socketId: socket.id,
+      playerId: resolvedPlayerId,
       slot: 1,
       name: playerData.name || 'Player 1',
       device: playerData.device || 'pc',
@@ -69,8 +72,11 @@ class RoomManager {
     this.leaveCurrentRoom(socket);
 
     const roomCode = 'SOLO-' + this.generateRoomCode().slice(0, 4);
+    const resolvedPlayerId = (playerData && playerData.playerId && String(playerData.playerId).trim()) || socket.playerId || socket.id;
+    socket.playerId = resolvedPlayerId;
     const player = {
       socketId: socket.id,
+      playerId: resolvedPlayerId,
       slot: 1,
       name: playerData.name || 'Solo Commando',
       device: playerData.device || 'pc',
@@ -138,8 +144,11 @@ class RoomManager {
 
     this.leaveCurrentRoom(socket);
 
+    const resolvedPlayerId = (playerData && playerData.playerId && String(playerData.playerId).trim()) || socket.playerId || socket.id;
+    socket.playerId = resolvedPlayerId;
     const player = {
       socketId: socket.id,
+      playerId: resolvedPlayerId,
       slot: 2,
       name: playerData.name || 'Player 2',
       device: playerData.device || 'mobile',
