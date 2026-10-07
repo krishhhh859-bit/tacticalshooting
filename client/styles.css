@@ -1187,14 +1187,16 @@ canvas {
 
 .mobile-buttons-cluster {
   position: absolute;
-  bottom: 2.5rem;
-  right: 2rem;
+  bottom: calc(2.2rem + var(--safe-bottom));
+  right: calc(2rem + var(--safe-right));
   display: grid;
   grid-template-areas:
     ".      scope"
     "aim    shoot"
     ".      reload";
-  gap: 0.8rem;
+  column-gap: clamp(1.4rem, 3.8vw, 2.4rem);
+  row-gap: clamp(1.2rem, 3.2vh, 1.8rem);
+  place-items: center;
   pointer-events: auto;
   z-index: 30;
 }
@@ -1213,6 +1215,14 @@ canvas {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  position: relative;
+}
+
+.mobile-btn span {
+  pointer-events: none;
 }
 
 .mobile-btn.active {
@@ -1229,6 +1239,42 @@ canvas {
   border: 2px solid #ff5252;
   font-size: 1.1rem;
   box-shadow: 0 0 18px rgba(255, 23, 68, 0.4);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.08s ease, border-color 0.08s ease;
+  position: relative;
+}
+
+/* FIRE button held / continuous-fire active visual indicator */
+.btn-shoot.active,
+.btn-shoot.is-held {
+  background: linear-gradient(135deg, #ff1744 0%, #b71c1c 100%) !important;
+  border-color: #ff8a80 !important;
+  box-shadow: 0 0 28px rgba(255, 23, 68, 0.95), inset 0 0 14px rgba(255, 255, 255, 0.4) !important;
+  transform: scale(0.93);
+  color: #ffffff !important;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.95);
+}
+
+.btn-shoot.active::after,
+.btn-shoot.is-held::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 82, 82, 0.75);
+  box-shadow: 0 0 14px rgba(255, 23, 68, 0.8);
+  pointer-events: none;
+  animation: fire-held-pulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes fire-held-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
 }
 
 .btn-scope {
@@ -2156,9 +2202,11 @@ canvas {
     gap: 0.5rem;
   }
   .phone-mode .mobile-buttons-cluster {
-    bottom: calc(0.6rem + var(--safe-bottom));
-    right: calc(0.6rem + var(--safe-right));
-    gap: 0.35rem;
+    bottom: calc(0.7rem + var(--safe-bottom));
+    right: calc(0.8rem + var(--safe-right));
+    column-gap: clamp(1.35rem, 4.2vw, 2.4rem);
+    row-gap: clamp(1.1rem, 3.2vh, 1.6rem);
+    place-items: center;
   }
   .btn-shoot {
     width: 66px;
@@ -2311,8 +2359,10 @@ canvas {
   .phone-mode .mobile-buttons-cluster,
   .mobile-controls-visible .mobile-buttons-cluster {
     bottom: calc(0.8rem + var(--safe-bottom));
-    right: calc(0.6rem + var(--safe-right));
-    gap: 0.4rem;
+    right: calc(0.8rem + var(--safe-right));
+    column-gap: clamp(1.3rem, 3.8vw, 2.0rem);
+    row-gap: clamp(1.1rem, 2.8vh, 1.6rem);
+    place-items: center;
     z-index: 30;
   }
 
@@ -2501,6 +2551,112 @@ canvas {
   text-align: center;
   border: 1px solid rgba(255, 255, 255, 0.08);
   user-select: none;
+}
+
+.camera-aim-face-diag {
+  font-family: monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.3px;
+  color: #cfd8dc;
+  background: rgba(8, 14, 20, 0.90);
+  padding: 4px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 229, 255, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  user-select: none;
+  text-align: left;
+}
+
+.camera-aim-face-diag span {
+  font-weight: 700;
+  color: #00e5ff;
+}
+
+.camera-aim-sens-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(12, 22, 14, 0.9);
+  border: 1px solid rgba(118, 255, 3, 0.25);
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+
+.camera-aim-sens-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sens-title {
+  font-family: var(--font-display);
+  font-size: 0.60rem;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--color-tactical-accent);
+}
+
+.sens-val-badge {
+  font-family: monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #00e5ff;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 1px 4px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+}
+
+.camera-aim-sens-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sens-hint-bound {
+  font-family: monospace;
+  font-size: 0.52rem;
+  color: var(--color-text-muted);
+}
+
+.camera-aim-sens-slider-wrap input[type="range"] {
+  flex: 1;
+  accent-color: var(--color-tactical-accent);
+  cursor: pointer;
+  height: 4px;
+}
+
+.setting-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+
+.setting-label-row label {
+  margin-bottom: 0 !important;
+}
+
+.setting-value-badge {
+  font-family: monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-tactical-accent);
+  background: rgba(118, 255, 3, 0.1);
+  border: 1px solid rgba(118, 255, 3, 0.3);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.setting-range-hints {
+  display: flex;
+  justify-content: space-between;
+  font-family: monospace;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  margin-top: 0.2rem;
 }
 
 .camera-aim-controls-row {

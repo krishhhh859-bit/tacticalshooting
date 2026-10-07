@@ -20,6 +20,8 @@ module.exports = {
   },
 
   RANGE_TARGETS: {
+    // Normal target board active existence duration before cycling (ms)
+    EXISTENCE_DURATION_MS: 5000,
     // Per-target independent cooldown after being hit (ms)
     HIT_COOLDOWN_MS: 6000,
     // Number of targets active simultaneously throughout the whole match

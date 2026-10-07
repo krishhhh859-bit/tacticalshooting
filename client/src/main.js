@@ -312,6 +312,36 @@ class App {
       });
     }
 
+    const cameraSensSlider = document.getElementById('setting-camera-sens');
+    if (cameraSensSlider) {
+      const savedCamSens = localStorage.getItem('para_sf_camera_sens');
+      if (savedCamSens) {
+        const val = parseFloat(savedCamSens);
+        if (!isNaN(val) && val >= 0.5 && val <= 3.0) {
+          cameraSensSlider.value = val;
+          const badge = document.getElementById('setting-camera-sens-val');
+          if (badge) badge.textContent = `${val.toFixed(1)}x`;
+        }
+      }
+
+      cameraSensSlider.addEventListener('input', (e) => {
+        const sens = parseFloat(e.target.value);
+        if (typeof window !== 'undefined' && window.activeCameraAimController) {
+          window.activeCameraAimController.setCameraSensitivity(sens);
+        } else if (this.currentGame && this.currentGame.cameraAim) {
+          this.currentGame.cameraAim.setCameraSensitivity(sens);
+        } else {
+          try { localStorage.setItem('para_sf_camera_sens', sens.toFixed(1)); } catch (_) {}
+          const badge = document.getElementById('setting-camera-sens-val');
+          if (badge) badge.textContent = `${sens.toFixed(1)}x`;
+          const widgetInput = document.getElementById('widget-camera-sens');
+          if (widgetInput) widgetInput.value = sens;
+          const widgetBadge = document.getElementById('widget-camera-sens-val');
+          if (widgetBadge) widgetBadge.textContent = `${sens.toFixed(1)}x`;
+        }
+      });
+    }
+
     if (btnChangeDevice) {
       btnChangeDevice.addEventListener('click', () => {
         ui.closeModal('settings');

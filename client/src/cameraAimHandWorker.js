@@ -1,7 +1,8 @@
 /**
  * PARA SF: FOREST ACCURACY - Decoupled Background Hand Worker
  * 
- * Offloads HandLandmarker inference and fist-curl analysis off the main browser thread.
+ * Offloads HandLandmarker inference, index-finger tracking, hand movement analysis,
+ * and fist-curl analysis off the main browser thread.
  * Guarantees ZERO main-thread blocking for Three.js rendering and weapon shooting.
  */
 
@@ -33,6 +34,7 @@ function ensureVisionBundle() {
 let handLandmarker = null;
 let isInitializing = false;
 let isReady = false;
+let lastHandTimestamp = -1;
 
 // Instant Fist Hysteresis Thresholds
 const FIST_ON_THRESHOLD = 0.65;
@@ -63,7 +65,57 @@ function calculateFistScore(hand) {
   const fourFingers = (cIndex + cMiddle + cRing + cPinky) * 0.25;
   const minCurl = Math.min(cIndex, cMiddle, cRing, cPinky);
 
-  return Math.max(0, Math.min(1, fourFingers * 0.70 + minCurl * 0.20 + cThumb * 0.10));
+  let rawScore = fourFingers * 0.70 + minCurl * 0.20 + cThumb * 0.10;
+  if (cIndex < 0.55) {
+    rawScore *= (cIndex / 0.55);
+  }
+
+  return Math.max(0, Math.min(1, rawScore));
+}
+
+function calculateHandAimPoint(hand) {
+  if (!hand || hand.length < 21) return null;
+
+  const wrist = hand[0];
+  const indexMcp = hand[5];
+  const indexTip = hand[8];
+  const middleMcp = hand[9];
+  const pinkyMcp = hand[17];
+
+  const palmLen = Math.hypot(middleMcp.x - wrist.x, middleMcp.y - wrist.y);
+  const palmWid = Math.hypot(pinkyMcp.x - indexMcp.x, pinkyMcp.y - indexMcp.y);
+  const handScale = Math.max(0.04, (palmLen + palmWid) * 0.5);
+
+  const dWrist = Math.hypot(indexTip.x - wrist.x, indexTip.y - wrist.y) / handScale;
+  const dMcp = Math.hypot(indexTip.x - indexMcp.x, indexTip.y - indexMcp.y) / handScale;
+  const cIndex = Math.max(0, Math.min(1,
+    Math.max(0, Math.min(1, (1.55 - dWrist) / 0.75)) * 0.55 +
+    Math.max(0, Math.min(1, (1.15 - dMcp) / 0.60)) * 0.45
+  ));
+
+  // Pointing: track index finger tip + knuckle
+  const extendedX = indexTip.x * 0.75 + indexMcp.x * 0.25;
+  const extendedY = indexTip.y * 0.75 + indexMcp.y * 0.25;
+
+  // Fist / curled: anchor to knuckle + palm center
+  const fistX = indexMcp.x * 0.5 + middleMcp.x * 0.3 + wrist.x * 0.2;
+  const fistY = indexMcp.y * 0.5 + middleMcp.y * 0.3 + wrist.y * 0.2;
+
+  // Continuous blend
+  const aimX = extendedX * (1 - cIndex) + fistX * cIndex;
+  const aimY = extendedY * (1 - cIndex) + fistY * cIndex;
+
+  return {
+    aimX,
+    aimY,
+    cIndex,
+    indexTipX: indexTip.x,
+    indexTipY: indexTip.y,
+    indexMcpX: indexMcp.x,
+    indexMcpY: indexMcp.y,
+    wristX: wrist.x,
+    wristY: wrist.y
+  };
 }
 
 self.onmessage = async (e) => {
@@ -113,7 +165,7 @@ self.onmessage = async (e) => {
 
     case 'INFER_HAND': {
       const bitmap = msg.bitmap;
-      const timestamp = msg.timestamp || performance.now();
+      let timestamp = msg.timestamp || performance.now();
       const capturedAt = msg.capturedAt || timestamp;
 
       if (!bitmap || !handLandmarker) {
@@ -123,8 +175,11 @@ self.onmessage = async (e) => {
         self.postMessage({
           type: 'HAND_RESULT',
           hasHand: false,
+          rawAimX: null,
+          rawAimY: null,
           fistScore: 0,
           isFist: false,
+          landmarks: null,
           timestamp,
           capturedAt,
           inferenceMs: 0
@@ -133,6 +188,12 @@ self.onmessage = async (e) => {
       }
 
       try {
+        // Enforce strictly monotonic timestamp for MediaPipe Video mode
+        if (timestamp <= lastHandTimestamp) {
+          timestamp = lastHandTimestamp + 1;
+        }
+        lastHandTimestamp = timestamp;
+
         const t0 = performance.now();
         const handRes = handLandmarker.detectForVideo(bitmap, timestamp);
         const inferenceMs = Math.round(performance.now() - t0);
@@ -144,8 +205,11 @@ self.onmessage = async (e) => {
           self.postMessage({
             type: 'HAND_RESULT',
             hasHand: false,
+            rawAimX: null,
+            rawAimY: null,
             fistScore: 0,
             isFist: false,
+            landmarks: null,
             timestamp,
             capturedAt,
             inferenceMs
@@ -155,6 +219,7 @@ self.onmessage = async (e) => {
 
         const hand = landmarks[0];
         const fistScore = calculateFistScore(hand);
+        const aimData = calculateHandAimPoint(hand);
 
         if (fistScore >= FIST_ON_THRESHOLD) {
           confirmedFist = true;
@@ -165,8 +230,29 @@ self.onmessage = async (e) => {
         self.postMessage({
           type: 'HAND_RESULT',
           hasHand: true,
+          rawAimX: aimData.aimX,
+          rawAimY: aimData.aimY,
+          indexTipX: aimData.indexTipX,
+          indexTipY: aimData.indexTipY,
+          indexMcpX: aimData.indexMcpX,
+          indexMcpY: aimData.indexMcpY,
+          wristX: aimData.wristX,
+          wristY: aimData.wristY,
+          cIndex: aimData.cIndex,
           fistScore,
           isFist: confirmedFist,
+          landmarks: [
+            { x: hand[0].x, y: hand[0].y },
+            { x: hand[4].x, y: hand[4].y },
+            { x: hand[5].x, y: hand[5].y },
+            { x: hand[8].x, y: hand[8].y },
+            { x: hand[9].x, y: hand[9].y },
+            { x: hand[12].x, y: hand[12].y },
+            { x: hand[13].x, y: hand[13].y },
+            { x: hand[16].x, y: hand[16].y },
+            { x: hand[17].x, y: hand[17].y },
+            { x: hand[20].x, y: hand[20].y }
+          ],
           timestamp,
           capturedAt,
           inferenceMs
@@ -178,8 +264,11 @@ self.onmessage = async (e) => {
         self.postMessage({
           type: 'HAND_RESULT',
           hasHand: false,
+          rawAimX: null,
+          rawAimY: null,
           fistScore: 0,
           isFist: false,
+          landmarks: null,
           timestamp,
           capturedAt,
           inferenceMs: 0,

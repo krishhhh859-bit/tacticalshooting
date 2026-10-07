@@ -122,41 +122,44 @@ self.onmessage = async (e) => {
         const { FilesetResolver, FaceDetector, FaceLandmarker } = vision;
         const fileset = await FilesetResolver.forVisionTasks(msg.wasmPath || '/lib/mediapipe/wasm');
 
-        // 1. Try lightweight BlazeFace FaceDetector
-        const detectorOpts = {
+        // 1. Initialize FaceLandmarker (Full 468 facial landmark mesh verification)
+        // Eliminates false positives from random objects, camera cover, or empty room
+        const landmarkerOpts = {
           baseOptions: {
-            modelAssetPath: msg.faceModelPath || '/assets/models/blaze_face_short_range.tflite',
+            modelAssetPath: msg.faceLandmarkerPath || '/assets/models/face_landmarker.task',
             delegate: 'CPU'
           },
           runningMode: 'VIDEO',
-          minDetectionConfidence: 0.5,
-          minSuppressionThreshold: 0.3
+          numFaces: 1,
+          minFaceDetectionConfidence: 0.6,
+          minFacePresenceConfidence: 0.6,
+          minTrackingConfidence: 0.6
         };
 
         try {
+          if (FaceLandmarker) {
+            faceLandmarker = await FaceLandmarker.createFromOptions(fileset, landmarkerOpts);
+            useFaceDetector = false;
+            console.log('[FACE WORKER] FaceLandmarker initialized with 468 landmark verification.');
+          } else {
+            throw new Error('FaceLandmarker not in bundle');
+          }
+        } catch (landmarkerErr) {
+          console.warn('[FACE WORKER] FaceLandmarker failed, trying FaceDetector:', landmarkerErr);
           if (FaceDetector) {
+            const detectorOpts = {
+              baseOptions: {
+                modelAssetPath: msg.faceModelPath || '/assets/models/blaze_face_short_range.tflite',
+                delegate: 'CPU'
+              },
+              runningMode: 'VIDEO',
+              minDetectionConfidence: 0.75, // Higher threshold to avoid false positives on random objects
+              minSuppressionThreshold: 0.3
+            };
             faceDetector = await FaceDetector.createFromOptions(fileset, detectorOpts);
             useFaceDetector = true;
-            console.log('[FACE WORKER] BlazeFace FaceDetector initialized.');
-          } else {
-            throw new Error('FaceDetector not in bundle');
+            console.log('[FACE WORKER] BlazeFace FaceDetector fallback initialized.');
           }
-        } catch (detectorErr) {
-          console.warn('[FACE WORKER] FaceDetector failed, falling back to FaceLandmarker:', detectorErr);
-          useFaceDetector = false;
-          const landmarkerOpts = {
-            baseOptions: {
-              modelAssetPath: '/assets/models/face_landmarker.task',
-              delegate: 'CPU'
-            },
-            runningMode: 'VIDEO',
-            numFaces: 1,
-            minFaceDetectionConfidence: 0.5,
-            minFacePresenceConfidence: 0.5,
-            minTrackingConfidence: 0.5
-          };
-          faceLandmarker = await FaceLandmarker.createFromOptions(fileset, landmarkerOpts);
-          console.log('[FACE WORKER] FaceLandmarker initialized as fallback.');
         }
 
         isInitializing = false;
@@ -200,10 +203,12 @@ self.onmessage = async (e) => {
           bitmap.close();
 
           const detections = detectRes?.detections;
-          if (!detections || detections.length === 0) {
+          if (!detections || !Array.isArray(detections) || detections.length === 0) {
             self.postMessage({
               type: 'FACE_RESULT',
               hasFace: false,
+              faceCount: 0,
+              confidence: 0,
               timestamp,
               capturedAt,
               inferenceMs
@@ -212,6 +217,23 @@ self.onmessage = async (e) => {
           }
 
           const det = detections[0];
+          const score = (det.categories && det.categories[0] && typeof det.categories[0].score === 'number')
+            ? det.categories[0].score
+            : 0;
+
+          if (score < 0.75 || !det.keypoints || det.keypoints.length < 4) {
+            self.postMessage({
+              type: 'FACE_RESULT',
+              hasFace: false,
+              faceCount: 0,
+              confidence: score,
+              timestamp,
+              capturedAt,
+              inferenceMs
+            });
+            return;
+          }
+
           const box = det.boundingBox || { originX: 0, originY: 0, width: 0, height: 0 };
           const boxNormWidth = Math.max(0.08, box.width / vw);
           const boxNormHeight = Math.max(0.08, box.height / vh);
@@ -242,6 +264,8 @@ self.onmessage = async (e) => {
           self.postMessage({
             type: 'FACE_RESULT',
             hasFace: true,
+            faceCount: detections.length,
+            confidence: score,
             rawFaceX,
             rawFaceY,
             faceWidth: boxNormWidth,
@@ -257,10 +281,12 @@ self.onmessage = async (e) => {
           bitmap.close();
 
           const faces = faceResults?.faceLandmarks;
-          if (!faces || faces.length === 0 || faces[0].length < 468) {
+          if (!faces || !Array.isArray(faces) || faces.length === 0 || faces[0].length < 468) {
             self.postMessage({
               type: 'FACE_RESULT',
               hasFace: false,
+              faceCount: 0,
+              confidence: 0,
               timestamp,
               capturedAt,
               inferenceMs
@@ -273,6 +299,8 @@ self.onmessage = async (e) => {
             self.postMessage({
               type: 'FACE_RESULT',
               hasFace: false,
+              faceCount: 0,
+              confidence: 0,
               timestamp,
               capturedAt,
               inferenceMs
@@ -283,11 +311,18 @@ self.onmessage = async (e) => {
           self.postMessage({
             type: 'FACE_RESULT',
             hasFace: true,
+            faceCount: faces.length,
+            confidence: 1.0,
             rawFaceX: centroid.rawFaceX,
             rawFaceY: centroid.rawFaceY,
             faceWidth: centroid.faceWidth,
             faceHeight: centroid.faceHeight,
-            box: null,
+            box: {
+              x: Math.max(0, centroid.rawFaceX - centroid.faceWidth * 0.5),
+              y: Math.max(0, centroid.rawFaceY - centroid.faceHeight * 0.5),
+              w: centroid.faceWidth,
+              h: centroid.faceHeight
+            },
             timestamp,
             capturedAt,
             inferenceMs
@@ -300,6 +335,8 @@ self.onmessage = async (e) => {
         self.postMessage({
           type: 'FACE_RESULT',
           hasFace: false,
+          faceCount: 0,
+          confidence: 0,
           timestamp,
           capturedAt,
           inferenceMs: 0,

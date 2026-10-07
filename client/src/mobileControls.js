@@ -512,25 +512,79 @@ export class MobileControls {
   _setupUIButtons() {
     // Fire / Shoot Button
     const btnShoot = document.getElementById('btn-mobile-shoot');
+    this.btnShoot = btnShoot;
     if (btnShoot) {
-      const startFiring = (e) => {
+      let activePointerId = null;
+
+      const handleFireDown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.pointerId !== undefined) {
+          activePointerId = e.pointerId;
+          try {
+            btnShoot.setPointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+        this.startShoot();
+        if (navigator.vibrate) {
+          try { navigator.vibrate(20); } catch (_) {}
+        }
+      };
+
+      const handleFireUp = (e) => {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (activePointerId !== null && e.pointerId !== undefined && e.pointerId === activePointerId) {
+            try {
+              btnShoot.releasePointerCapture(activePointerId);
+            } catch (_) {}
+            activePointerId = null;
+          }
+        }
+        this.stopShoot();
+      };
+
+      // Pointer events for accurate press & hold
+      btnShoot.addEventListener('pointerdown', handleFireDown);
+      btnShoot.addEventListener('pointerup', handleFireUp);
+      btnShoot.addEventListener('pointercancel', handleFireUp);
+      btnShoot.addEventListener('pointerleave', (e) => {
+        if (!btnShoot.hasPointerCapture || !btnShoot.hasPointerCapture(e.pointerId)) {
+          handleFireUp(e);
+        }
+      });
+      btnShoot.addEventListener('lostpointercapture', () => {
+        activePointerId = null;
+        this.stopShoot();
+      });
+
+      // Touch events
+      btnShoot.addEventListener('touchstart', (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.startShoot();
         if (navigator.vibrate) {
           try { navigator.vibrate(20); } catch (_) {}
         }
-      };
-      const stopFiring = (e) => {
+      }, { passive: false });
+      btnShoot.addEventListener('touchend', (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.stopShoot();
-      };
-      btnShoot.addEventListener('touchstart', startFiring, { passive: false });
-      btnShoot.addEventListener('touchend', stopFiring, { passive: false });
-      btnShoot.addEventListener('touchcancel', stopFiring, { passive: false });
-      btnShoot.addEventListener('mousedown', startFiring);
-      btnShoot.addEventListener('mouseup', stopFiring);
+      }, { passive: false });
+      btnShoot.addEventListener('touchcancel', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.stopShoot();
+      }, { passive: false });
+
+      // Window safety to prevent permanently stuck states on interruptions
+      window.addEventListener('pointercancel', () => this.stopShoot());
+      window.addEventListener('blur', () => this.stopShoot());
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) this.stopShoot();
+      });
     }
 
     // Scope Button (Toggle)
@@ -547,6 +601,7 @@ export class MobileControls {
           btnScope.classList.add('active');
         }
       };
+      btnScope.addEventListener('pointerdown', (e) => e.stopPropagation());
       btnScope.addEventListener('touchstart', toggleScope, { passive: false });
       btnScope.addEventListener('click', toggleScope);
     }
@@ -563,6 +618,7 @@ export class MobileControls {
           this.callbacks.onAim(this._aiming);
         }
       };
+      btnAim.addEventListener('pointerdown', (e) => e.stopPropagation());
       btnAim.addEventListener('touchstart', toggleAim, { passive: false });
       btnAim.addEventListener('click', toggleAim);
     }
@@ -575,6 +631,7 @@ export class MobileControls {
         e.stopPropagation();
         this.reload();
       };
+      btnReload.addEventListener('pointerdown', (e) => e.stopPropagation());
       btnReload.addEventListener('touchstart', doReload, { passive: false });
       btnReload.addEventListener('click', doReload);
     }
@@ -1015,13 +1072,20 @@ export class MobileControls {
   startShoot() {
     if (this._shooting) return;
     this._shooting = true;
+    if (this.btnShoot) {
+      this.btnShoot.classList.add('is-held', 'active');
+    }
     if (typeof this.callbacks.onShoot === 'function') {
       this.callbacks.onShoot();
     }
   }
 
   stopShoot() {
+    if (!this._shooting && (!this.btnShoot || !this.btnShoot.classList.contains('is-held'))) return;
     this._shooting = false;
+    if (this.btnShoot) {
+      this.btnShoot.classList.remove('is-held', 'active');
+    }
     if (typeof this.callbacks.onStopShoot === 'function') {
       this.callbacks.onStopShoot();
     }
@@ -1115,6 +1179,7 @@ export class MobileControls {
   }
 
   hide() {
+    this.stopShoot();
     this.enabled = false;
     this.joystickVector = { x: 0, y: 0 };
     this.joystickTouchId = null;
@@ -1173,4 +1238,8 @@ if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orienta
     setTimeout(() => window.dispatchEvent(new Event('resize')), 100);
     setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
   });
+}
+
+if (typeof window !== 'undefined') {
+  window.MobileControls = MobileControls;
 }

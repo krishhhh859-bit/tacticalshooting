@@ -161,6 +161,7 @@ export class GameMatch {
       () => this.controls,
       () => this.handleShoot()
     );
+    window.game = this;
 
     // 9. Register Network Listeners
     this.setupNetworkHandlers();
@@ -383,6 +384,14 @@ export class GameMatch {
     soundEngine.startForestAmbience();
     console.log('[GAME] Animation loop started.');
     this.animate();
+
+    // Auto-resume Camera Aim if user previously had it enabled
+    if (this.cameraAim && typeof localStorage !== 'undefined' && localStorage.getItem('para_sf_camera_aim_enabled') === 'true') {
+      console.log('[GAME] Auto-starting preferred Camera Aim for match...');
+      this.cameraAim.start().catch(err => {
+        console.warn('[GAME] Auto-start Camera Aim error:', err);
+      });
+    }
   }
 
   stop() {

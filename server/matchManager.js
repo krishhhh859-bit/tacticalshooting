@@ -233,7 +233,8 @@ class MatchManager {
     const cycleElapsed = now - this.targetCycleStartTime;
 
     if (this.targetCyclePhase === 'ACTIVE') {
-      if (cycleElapsed >= 3000) {
+      const existenceDuration = config.RANGE_TARGETS.EXISTENCE_DURATION_MS || 5000;
+      if (cycleElapsed >= existenceDuration) {
         // Transition to COOLDOWN: clear all targets
         this.targetCyclePhase = 'COOLDOWN';
         this.targetCycleStartTime = now;
@@ -243,7 +244,7 @@ class MatchManager {
           target.state = 'FALLING';
           if (!target.hitAt) target.hitAt = now;
         }
-        console.log('[TARGET] Cycle → COOLDOWN (3s empty range)');
+        console.log(`[TARGET] Cycle → COOLDOWN (targets expired after ${existenceDuration / 1000}s)`);
         return;
       }
       // Move active targets
