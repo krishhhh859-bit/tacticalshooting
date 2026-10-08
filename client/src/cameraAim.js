@@ -160,7 +160,15 @@ export class CameraAimController {
 
     // Stale Input Safety Bounds
     this.MAX_HAND_INPUT_AGE = 120; // ms: if hand result is older, stop look & shoot
-    this.MAX_FACE_INPUT_AGE = 120; // ms
+    this.MAX_FACE_INPUT_AGE = 400; // ms: 300-500ms failure tolerance
+
+    // Temporal Stability / Debounce Layer for PC Face Detection
+    this.FACE_DETECT_MIN_FRAMES = 2; // Require 2 consecutive successful frames to confirm detection
+    this.FACE_LOSS_TIMEOUT_MS = 400; // Tolerate brief failures, only declare lost after 400ms continuous failure (300-500ms)
+    this.consecutiveDetectedFrames = 0;
+    this.faceDetectedConfirmed = false;
+    this.faceLossStartTime = 0;
+    this.lastValidFaceTimestamp = 0;
 
     // Reused Snapshot Object (Zero GC Allocation Churn)
     this.latestSnapshot = {
@@ -412,7 +420,7 @@ export class CameraAimController {
       case 'RAW':
         this.faceTrackingEnabled = false;
         this.handTrackingEnabled = false;
-        this.handleFaceLoss();
+        this.handleFaceLoss(performance.now(), true);
         this.handleHandLoss();
         this.showToast('TEST MODE: RAW WEBCAM ONLY (NO AI)');
         break;
@@ -579,7 +587,11 @@ export class CameraAimController {
       this.handBusy = false;
       this.faceBusy = false;
 
-      // Reset anchors and ensure NO FACE DETECTED on start
+      // Reset anchors and debounce state on start
+      this.consecutiveDetectedFrames = 0;
+      this.faceDetectedConfirmed = false;
+      this.faceLossStartTime = 0;
+      this.lastValidFaceTimestamp = 0;
       this.stableFaceX = null;
       this.stableFaceY = null;
       this.prevFaceX = null;
@@ -643,6 +655,10 @@ export class CameraAimController {
     this.prevHandY = null;
 
     this.isFaceMoving = false;
+    this.consecutiveDetectedFrames = 0;
+    this.faceDetectedConfirmed = false;
+    this.faceLossStartTime = 0;
+    this.lastValidFaceTimestamp = 0;
     this.stableFaceX = null;
     this.stableFaceY = null;
     this.prevFaceX = null;
@@ -1072,7 +1088,41 @@ export class CameraAimController {
     }
   }
 
-  handleFaceLoss(now = performance.now()) {
+  handleFaceLoss(now = performance.now(), force = false) {
+    this.consecutiveDetectedFrames = 0;
+
+    // 1. Once a face is detected, tolerate brief detection failures.
+    // Only change to "Face Lost" after approximately 300–500 ms (400ms) of continuous detection failure.
+    if (this.faceDetectedConfirmed && !force) {
+      if (this.faceLossStartTime === 0) {
+        this.faceLossStartTime = now;
+      }
+
+      const lossDuration = now - this.faceLossStartTime;
+
+      if (lossDuration < this.FACE_LOSS_TIMEOUT_MS) {
+        // Brief failure tolerated: retain last valid face/tracking state instead of resetting camera movement.
+        const snap = this.latestSnapshot;
+        snap.aimX = 0;
+        snap.aimY = 0;
+        this.isFaceMoving = false;
+        this.turnDurationRemaining = 0;
+        this.turnRateYaw = 0;
+        this.turnRatePitch = 0;
+
+        // Retain anchors (stableFaceX, prevFaceX) and UI status ('FACE DETECTED')
+        return;
+      }
+
+      // Continuous failure has exceeded the 300-500ms threshold: truly face lost
+      this.faceDetectedConfirmed = false;
+      this.faceLossStartTime = 0;
+    }
+
+    // Confirmed Face Loss (or forced reset):
+    this.faceDetectedConfirmed = false;
+    this.faceLossStartTime = 0;
+
     const snap = this.latestSnapshot;
     snap.hasFace = false;
     snap.faceCount = 0;
@@ -1098,12 +1148,29 @@ export class CameraAimController {
   }
 
   handleFaceResult(msg, now = performance.now()) {
-    const snap = this.latestSnapshot;
-    if (!msg.hasFace || (typeof msg.faceCount === 'number' && msg.faceCount === 0)) {
+    if (!msg || !msg.hasFace || (typeof msg.faceCount === 'number' && msg.faceCount === 0)) {
       this.handleFaceLoss(now);
       return;
     }
 
+    // 1. Valid detection frame received
+    this.lastValidFaceTimestamp = now;
+    this.faceLossStartTime = 0; // Clear any pending loss timer immediately
+    this.consecutiveDetectedFrames++;
+
+    // 2. State transition check (False -> True):
+    // Require approximately 2–3 consecutive successful detection frames before changing state to "Face Detected"
+    if (!this.faceDetectedConfirmed) {
+      if (this.consecutiveDetectedFrames >= this.FACE_DETECT_MIN_FRAMES) {
+        this.faceDetectedConfirmed = true;
+      } else {
+        // Not yet confirmed (warming up 1st frame) - do not transition state yet
+        return;
+      }
+    }
+
+    // 3. Confirmed detected state: update snapshot and apply camera movement
+    const snap = this.latestSnapshot;
     snap.hasFace = true;
     snap.faceCount = typeof msg.faceCount === 'number' ? msg.faceCount : 1;
     snap.confidence = typeof msg.confidence === 'number' ? msg.confidence : 1.0;
@@ -1529,12 +1596,12 @@ export class CameraAimController {
     const now = performance.now();
 
     // 1. Live Data Freshness & Stale Face Detection Timeout Safety:
-    // If no fresh face result arrived within MAX_FACE_INPUT_AGE (120ms), immediately treat face as NOT DETECTED
+    // If no fresh face result arrived within MAX_FACE_INPUT_AGE (400ms), immediately treat face as NOT DETECTED
     const faceAge = (snap.faceTimestamp > 0) ? (now - snap.faceTimestamp) : 9999;
     this.diagnostics.faceAgeMs = (snap.faceTimestamp > 0) ? Math.round(faceAge) : 9999;
 
     if (snap.hasFace && faceAge > this.MAX_FACE_INPUT_AGE) {
-      this.handleFaceLoss(now);
+      this.handleFaceLoss(now, true);
     }
 
     if (snap.handTimestamp > 0 && (now - snap.handTimestamp) > this.MAX_HAND_INPUT_AGE) {
