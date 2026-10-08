@@ -29,8 +29,13 @@
   <!-- MediaPipe Tasks Vision Library -->
   <script src="/lib/mediapipe/vision_bundle.js"></script>
 
-  <!-- Socket.IO Library -->
+  <!-- Socket.IO Library (Server served with CDN fallback) -->
   <script src="/socket.io/socket.io.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"><\/script>');
+    }
+  </script>
 </head>
 <body>
 

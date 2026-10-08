@@ -44,6 +44,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// SPA fallback: serve index.html for GET HTML requests
+app.get('*', (req, res, next) => {
+  if (req.method === 'GET' && req.accepts('html') && !req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+    return res.sendFile(path.join(__dirname, '..', 'client', 'index.html'));
+  }
+  next();
+});
+
 // Socket.IO Communication Gateway
 io.on('connection', (socket) => {
   // Helper to reliably resolve and bind persistent player ID
@@ -191,4 +199,13 @@ function startServer(port) {
   });
 }
 
-startServer(DEFAULT_PORT);
+// Start Server if executed directly (e.g. node server/server.js or npm start)
+if (require.main === module) {
+  startServer(DEFAULT_PORT);
+}
+
+module.exports = server;
+module.exports.server = server;
+module.exports.app = app;
+module.exports.io = io;
+module.exports.roomManager = roomManager;

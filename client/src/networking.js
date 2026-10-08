@@ -36,13 +36,23 @@ class NetworkClient {
         }
 
         const playerId = this.getPlayerId();
-        this.socket = window.io({
+        // Environment-aware connection target:
+        // Automatically uses window.location.origin in production (Vercel) and localhost in development
+        const targetOrigin = (typeof window !== 'undefined' && window.location && window.location.origin)
+          ? window.location.origin
+          : undefined;
+
+        console.log(`[NET] Connecting to origin: ${targetOrigin || 'default'} (PlayerID: ${playerId})`);
+
+        this.socket = window.io(targetOrigin, {
+          path: '/socket.io',
           auth: { playerId },
           query: { playerId },
           transports: ['websocket', 'polling'],
           reconnection: true,
-          reconnectionAttempts: 5,
-          reconnectionDelay: 1000
+          reconnectionAttempts: 10,
+          reconnectionDelay: 1000,
+          timeout: 20000
         });
 
         this.socket.on('connect', () => {

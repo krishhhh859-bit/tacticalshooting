@@ -30,4 +30,8 @@ scratch/
 # Server persistent score data
 server/data/
 
+# Build artifacts
+client/lib/
+
+
 
